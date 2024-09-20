@@ -1,0 +1,9 @@
+.vscode
+env/
+.env
+use case scenario.txt
+classroom/*.txt
+classroom/*.pdf
+classroom/*.sqlite
+**/__pycache__
+**/migrations
