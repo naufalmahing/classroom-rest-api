@@ -16,6 +16,8 @@ from rest_framework.response import Response
 
 from .serializers import SubmitFileSerializer
 
+from datetime import datetime
+from django.utils import timezone
 
 class LoginView(APIView):
     # authentication_classes = [authentication.BasicAuthentication]
@@ -269,12 +271,6 @@ class ClassroomAPIView(APIView):
             return JsonResponse({'msg': 'Nonexistent classroom'})
         return JsonResponse({'msg': 'Class deleted'})
 
-    """
-    how to run specific functions?
-    maybe use function based views, add them as functions to CBV
-    
-    """
-
 class AssignmentAPIView(APIView):
     authentication_classes = [SessionAuthentication, BasicAuthentication]
     permission_classes = [IsAuthenticated]
@@ -309,6 +305,12 @@ class AssignmentAPIView(APIView):
             classroom=teacher.first().classroom, 
             description=request.data['description']
         )
+
+        try:
+            assignment.deadline = datetime.strptime(request.data['assignment_deadline'], '%Y-%m-%d %H:%M')
+        except Exception as _:
+            print('There is no deadline')
+
         assignment.save()
         return JsonResponse({'msg': 'Assignment created'})
     
@@ -320,6 +322,12 @@ class AssignmentAPIView(APIView):
         assignment = teacher.first().classroom.assignment_set.get(id=request.data['assignment_id'])
         assignment.name = request.data['name']
         assignment.description = request.data['description']
+
+        try:
+            assignment.deadline = datetime.strptime(request.data['assignment_deadline'], '%Y-%m-%d %H:%M')
+        except Exception as _:
+            print('There is no assignment deadline')
+
         assignment.save()
         return JsonResponse({'msg': 'Assignment updated'})
 
@@ -369,18 +377,7 @@ class UploadAPIView(APIView):
         # return JsonResponse({'data': [ins.file for ins in submit_files]})
 
     def post(self, request, *args, **kwarsg):
-        print(request.data)
-        print(request.data['file'])
-        # submission = Submission.objects.get(id=request.data['assignment_id'])
-        # if not submission:
-        #     submission = Submission(
-        #         assignment=Assignment.objects.get(id=int(request.data['assignment_id'])),
-        #         student=Student.objects.first(), #TODO: update to use id of student from user logged in
-        #     )
-            # # get student object
-            # request.user.pk
-        
-        """v.1
+        """
         check if there's already a submission
          use assignment id, (user id, classroom id) -> student, 
         create a submission if there isn't
@@ -394,6 +391,11 @@ class UploadAPIView(APIView):
 
         assignment = student.classroom.assignment_set.get(id=request.data['assignment_id'])
 
+        if assignment.deadline:
+            print(assignment.deadline)
+            if timezone.now() > assignment.deadline:
+                return JsonResponse({'msg': 'Past deadline'})
+            
         submission = assignment.submission_set.filter(student__id=student.id, assignment__id=assignment.id)
         if not submission:
             submission = Submission(assignment=assignment, student=student)
@@ -417,6 +419,10 @@ class UploadAPIView(APIView):
 
         assignment = student.classroom.assignment_set.get(id=request.data['assignment_id'])
 
+        if assignment.deadline:
+            if timezone.now() > assignment.deadline:
+                return JsonResponse({'msg': 'Past deadline'})
+        
         submission = assignment.submission_set.filter(student__id=student.id, assignment__id=assignment.id)
         if not submission:
             return JsonResponse({'msg': 'There\' no submission to this assignment'})
@@ -425,7 +431,7 @@ class UploadAPIView(APIView):
         try:
             submission.submitfile_set.get(id=request.data['submitfile_id']).delete()
         except Exception as _:
-            return JsonResponse({'msg': traceback.format_exc()})
+            return JsonResponse({'msg': 'Nonexisting submit file'})
         return JsonResponse({'msg': 'File deleted'})
     
 """Needs teacher role"""
@@ -433,7 +439,6 @@ class GradeAPIView(APIView):
     authentication_classes = [SessionAuthentication, BasicAuthentication]
     permission_classes = [IsAuthenticated]
 
-    """should I add a get function to get the grades of students"""
     def get(self, request):
         """
         get all submissions within a class for an assignment

@@ -1,5 +1,4 @@
 from django.db import models
-# from rest_framework import 
 
 class Question(models.Model):
     question_text = models.CharField(max_length=200)
@@ -11,27 +10,17 @@ class Choice(models.Model):
     choice_text = models.CharField(max_length=200)
     votes = models.IntegerField(default=0)
 
-# class User(models.Model):
-#     name = models.CharField(max_length=100)
-
-#     def __str__(self):
-#         return self.name
-#     pass
-
 class Classroom(models.Model):
-    # many to many - User
-    # one to many - Assignment
+    """
+    many to many - User (student & teacher)
+    one to many - Assignment
+    """
     name = models.CharField(max_length=100, default='class_', null=True)
     code = models.CharField(max_length=15, null=True, unique=True)
-    # students = models.ManyToManyField(Student, blank=True)
-    # teachers = models.ManyToManyField(Teacher)
 
     def __str__(self):
         return str(self.pk) + ' ' + self.name
 
-from django.contrib.auth.models import User
-
-# update User class method
 from django.contrib.auth.models import User
 
 def newstr(self):
@@ -52,21 +41,17 @@ class Teacher(models.Model):
         return 'teacher: user of ' + self.user.username
     
 class Assignment(models.Model):
-    # name 
-    # description 
-    # submissions 
     name = models.CharField(max_length=100)
     classroom = models.ForeignKey(Classroom, on_delete=models.CASCADE, null=True)
     description = models.TextField()
+    deadline = models.DateTimeField(null=True)
     
     def __str__(self):
         return self.classroom.name + ' - ' + str(self.pk) + ': ' + self.name
 
 
 class Submission(models.Model):
-    # file_path, check google
     assignment = models.ForeignKey(Assignment, on_delete=models.CASCADE)
-    # student = models.ForeignKey(Student, on_delete=models.CASCADE, null=True, primary_key=False)
     student = models.ForeignKey(Student, on_delete=models.CASCADE, null=True)
     grade = models.IntegerField(default=0)
 

@@ -4,6 +4,8 @@ env/
 use case scenario.txt
 classroom/*.txt
 classroom/*.pdf
-classroom/*.sqlite
+classroom/*.sqlite3
+*.sqlite3
+*.jpg
 **/__pycache__
 **/migrations
