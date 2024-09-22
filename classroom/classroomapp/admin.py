@@ -1,25 +1,43 @@
 from django.contrib import admin
 
 from .models import (
-    Question, Choice, 
     Classroom, 
-    Student, Teacher, User, 
+    Student, Teacher, 
     Assignment, Submission, SubmitFile
 )
 
-from .models import Reporter, Article
+class TeacherInline(admin.TabularInline):
+    model = Teacher
 
-admin.site.register(Question)
-admin.site.register(Choice)
-admin.site.register(Classroom)
+class StudentInline(admin.TabularInline):
+    model = Student
+class ClassroomAdmin(admin.ModelAdmin):
+    inlines = [
+        TeacherInline,
+        StudentInline,
+    ]
+    list_display = ['name', 'student_code', 'teacher_code']
+
+class SubmissionInline(admin.TabularInline):
+    model = Submission
+class AssignmentAdmin(admin.ModelAdmin):
+    inlines = [
+        SubmissionInline,
+    ]
+
+
+class SubmitFileInline(admin.TabularInline):
+    model = SubmitFile
+
+class SubmissionAdmin(admin.ModelAdmin):
+    # list_display = ['name', 'assignment', 'student', 'grade']
+    inlines = [
+        SubmitFileInline
+    ]
+
+admin.site.register(Classroom, ClassroomAdmin)
 admin.site.register(Student)
 admin.site.register(Teacher)
-# admin.site.register(User)
-admin.site.register(Assignment)
-admin.site.register(Submission)
+admin.site.register(Assignment, AssignmentAdmin)
+admin.site.register(Submission, SubmissionAdmin)
 admin.site.register(SubmitFile)
-
-
-
-admin.site.register(Reporter)
-admin.site.register(Article)

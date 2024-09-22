@@ -1,3 +1,6 @@
+import string
+import random
+
 import traceback
 
 from django.shortcuts import render
@@ -10,7 +13,9 @@ from .models import (
     Classroom, Assignment, Submission, SubmitFile
 )
 
-from rest_framework import permissions, authentication
+from rest_framework.authentication import SessionAuthentication, BasicAuthentication
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.response import Response
 
@@ -18,65 +23,6 @@ from .serializers import SubmitFileSerializer
 
 from datetime import datetime
 from django.utils import timezone
-
-class LoginView(APIView):
-    # authentication_classes = [authentication.BasicAuthentication]
-    # permission_classes = [permissions.IsAuthenticated]
-
-    def get(self, request, *args, **kwargs):
-        return JsonResponse({'msg': 'this is tim'})
-    def post(self, request, *args, **kwargs):
-        print(request.data)
-        return JsonResponse({'msg': 'hello there' + request.data['data']})
-
-
-# rest_frameowrk authentication example
-from rest_framework.authentication import SessionAuthentication, BasicAuthentication
-from rest_framework.permissions import IsAuthenticated
-from rest_framework.response import Response
-from rest_framework.views import APIView
-
-class ExampleView(APIView):
-    authentication_classes = [SessionAuthentication, BasicAuthentication]
-    permission_classes = [IsAuthenticated]
-
-    def get(self, request, format=None):
-        content = {
-            'user': str(request.user),  # `django.contrib.auth.User` instance.
-            'auth': str(request.auth),  # None
-        }
-        return Response(content)
-    
-def index(request):
-    return JsonResponse({'msg': 'this is tim'})
-
-def join(request):
-    pass
-
-def invite(request):
-    pass
-
-
-def create_class(request):
-    pass
-
-def delete_class(request):
-    pass
-
-def update_class(request):
-    pass
-
-def get_class(request):
-    pass
-
-def create_join_code(request):
-    pass
-
-def remove_join_code(request):
-    pass
-
-def create_assignment(request):
-    pass
 
 from django.contrib.auth import models
 from django.contrib.auth.hashers import make_password
@@ -86,29 +32,6 @@ class RegisterAPIView(APIView):
         user = models.User(username=request.data['username'], password=make_password(request.data['password']))
         user.save()
         return JsonResponse({'msg': 'Account created'})
-    
-class AuthAPIView(View):
-    def post(self, request, *args, **kwargs):
-        pass
-
-    def delete(self, request, *args, **kwargs):
-        pass
-
-    def verify(self, request, *args, **kwargs):
-        pass
-    """
-    create a user 
-    verify a user
-    """
-
-def login(request):
-    pass
-
-def logout(request):
-    pass
-
-def register(request):
-    pass
 
 class HomeAPIView(APIView):
     authentication_classes = [SessionAuthentication, BasicAuthentication]
@@ -136,15 +59,33 @@ class JoinClassAPIView(APIView):
         classroom = Classroom.objects.filter(id=request.data['classroom_id'])
         if not classroom:
             return JsonResponse({'msg': 'Nonexistent classroom'})
+
+        if not classroom.first().student_code:
+            return JsonResponse({'msg': classroom.first().name + ' not accepting students'})
+        
+        if not classroom.first().teacher_code:
+            return JsonResponse({'msg': classroom.first().name + ' not accepting teachers'})
         
         # check for duplicate
         student = classroom.first().student_set.filter(user__id=user.id)
         teacher = classroom.first().teacher_set.filter(user__id=user.id)
         if student or teacher:
-            return JsonResponse({'msg': 'Already joined ' + classroom.first().name} + 'as a teacher' if teacher else 'as a student')
+            s = ' as a teacher' if teacher else ' as a student'
+            return JsonResponse({'msg': 'Already joined ' + classroom.first().name + s})
+        
+        try:
+            if classroom.first().teacher_code == request.data['teacher_code']:
+                user.teacher_set.create(classroom=classroom.first())
+                return JsonResponse({'msg': 'Joined ' + classroom.first().name + ' as a teacher'})
+        except Exception as _:
+            print('There is no teacher code')
+
+        # validate join code
+        if not classroom.first().student_code == request.data['student_code']:
+            return JsonResponse({'msg': 'Code don\'t match'})
         
         user.student_set.create(classroom=classroom.first())
-        return JsonResponse({'msg': 'Joined ' + classroom.first().name})
+        return JsonResponse({'msg': 'Joined ' + classroom.first().name + ' as a student'})
     
     def delete(self, request):
         """leave class function for student and teacher
@@ -161,11 +102,12 @@ class JoinClassAPIView(APIView):
         student = classroom.first().student_set.filter(user__id=request.user.id)
         teacher = classroom.first().teacher_set.filter(user_id=request.user.id)
 
-        if not student or not teacher:
+        if not student or teacher:
             return JsonResponse({'msg': 'Nonexistent classroom'})
+        
         if teacher:
             # check if its the last teacher
-            if classroom.teacher_set.all().length < 1:
+            if classroom.first().teacher_set.all().length < 1:
                 classroom.first().delete()
                 return JsonResponse({'msg': classroom.first().name + ' deleted'})
             
@@ -175,15 +117,29 @@ class JoinClassAPIView(APIView):
         student.first().delete()
         
         return JsonResponse({'msg': 'Left ' + classroom.first().name})
-    
+
+
+def id_generator(size=6, chars=string.ascii_uppercase + string.digits):
+    return ''.join(random.choice(chars) for _ in range(size))
+
+def get_id(classroom):
+    id = id_generator()
+    if classroom.student_code == id:
+        get_id(classroom)
+    return id
+
 class JoinAPIView(APIView):
     authentication_classes = [SessionAuthentication, BasicAuthentication]
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
         """get join code for teacher"""
-        classroom = Classroom.objects.filter(id=request.data['classroom_id']).first()
-        return JsonResponse({'classroom_name': classroom.name, 'classroom_code': classroom.code})
+        teacher = Teacher.objects.filter(user__id=request.user.id, classroom__id=request.data['classroom_id'])
+        if not teacher:
+            return JsonResponse({'msg': 'Nonexisting classroom'})
+        
+        classroom = teacher.first().classroom
+        return JsonResponse({'classroom_name': classroom.name, 'classroom_student_code': classroom.student_code, 'classroom_teacher_code': classroom.teacher_code})
 
     def post(self, request):
         """create/recreate join code by teacher"""
@@ -191,25 +147,56 @@ class JoinAPIView(APIView):
         if not teacher:
             return JsonResponse({'msg': 'Nonexistent classroom'})
 
-        # try:
-        #     teacher.classroom.code = get random code function
-        #     teacher.classroom.save()
-        # except Exception as _:
-        #     """recursive calling of random method"""
-        #     pass
-        return JsonResponse({'msg': 'Classroom join code created'})
+        teacher = teacher.first()
+        try:
+            teacher.classroom.teacher_code = request.data['teacher_code']
+            try:
+                teacher.classroom.save()
+            except Exception as _:
+                return JsonResponse({'msg': 'Teacher code has been taken'})
+            
+            return JsonResponse({
+                'msg': 'Classroom teacher join code is created', 
+                'teacher_code': teacher.classroom.teacher_code
+            })
+        except Exception as _:
+            print('There is no teacher code')
+
+        i = 0
+        while True:
+            codes = [classroom.student_code for classroom in Classroom.objects.all()]
+            new_code = get_id(teacher.classroom)
+            if new_code not in codes:
+                teacher.classroom.student_code = new_code
+                teacher.classroom.save()
+                break
+            i += 1
+            if i == 10:
+                return JsonResponse({'msg': 'Try again'})
+        
+        return JsonResponse({
+            'msg': 'Classroom join code create', 
+            'student_code': teacher.classroom.student_code, 
+        })
 
     def delete(self, request):
-        """remove join code for teacher, disables the use of the code"""
+        """remove join code by teacher, disables the use of the code"""
         teacher = Teacher.objects.filter(user__id=request.user.id, classroom__id=request.data['classroom_id'])
         if not teacher:
             return JsonResponse({'msg': 'Nonexistent classroom'})
         teacher = teacher.first()
 
-        teacher.classroom.code = None
-        teacher.classroom.save()
-        return JsonResponse({'msg': 'This isn\'t the delete function'})
+        role = request.data['role']
+        if role == 'teacher':
+            teacher.classroom.teacher_code = None
+            teacher.classroom.save()
+            return JsonResponse({'msg': 'Classroom teacher code deleted'})
+        elif role == 'student':
+            teacher.classroom.save()
+            teacher.classroom.student_code = None
+            return JsonResponse({'msg': 'Classroom student code deleted'})
 
+        return JsonResponse({'msg': 'Use \'teacher\' or \'student\' as role'})
 
 class ClassroomAPIView(APIView):
     authentication_classes = [SessionAuthentication, BasicAuthentication]
@@ -429,7 +416,9 @@ class UploadAPIView(APIView):
         submission = submission.first()
 
         try:
-            submission.submitfile_set.get(id=request.data['submitfile_id']).delete()
+            submitfile = submission.submitfile_set.get(id=request.data['submitfile_id'])
+            submitfile.file.delete()
+            submitfile.delete()
         except Exception as _:
             return JsonResponse({'msg': 'Nonexisting submit file'})
         return JsonResponse({'msg': 'File deleted'})
